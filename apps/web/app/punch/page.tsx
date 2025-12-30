@@ -9,22 +9,25 @@ export default function PunchKiosk() {
   const [selectedProject, setSelectedProject] = useState("");
   const [activeLogId, setActiveLogId] = useState<string | null>(null);
 
-  // Use Environment Variable or fallback to localhost
+  // Use the live Render URL or fallback to localhost
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
   // 1. LOAD DROPDOWN DATA
   useEffect(() => {
     fetch(`${API_BASE_URL}/time-log/context`)
       .then((res) => {
-        if (!res.ok) throw new Error();
+        if (!res.ok) throw new Error("Backend Offline");
         return res.json();
       })
       .then((data) => {
-        // Safety checks to ensure we are setting arrays
-        setUsers(data?.users || []);
-        setProjects(data?.projects || []);
+        // Safety checks to ensure we are setting arrays to avoid .map() crashes
+        setUsers(Array.isArray(data?.users) ? data.users : []);
+        setProjects(Array.isArray(data?.projects) ? data.projects : []);
       })
-      .catch(() => setStatus("❌ Connection Error: Backend Offline"));
+      .catch((err) => {
+        console.error("Context fetch failed:", err);
+        setStatus("❌ Connection Error: Backend Offline");
+      });
   }, [API_BASE_URL]);
 
   // 2. ACTUAL CLOCK IN (Real GPS)
@@ -38,7 +41,7 @@ export default function PunchKiosk() {
     );
   };
 
-  // 3. DEV BYPASS (Fake GPS)
+  // 3. DEV BYPASS (Simulated GPS for Testing)
   const handleSimulate = () => {
     if (!selectedUser || !selectedProject) return alert("Select User & Project!");
     setStatus("📡 Simulating Satellite Link...");
@@ -66,7 +69,8 @@ export default function PunchKiosk() {
       setActiveLogId(log.id);
       setStatus(log.is_flagged ? "⚠️ Clocked In (Flagged: Off-Site)" : "✅ Clocked In (On-Site)");
     } catch (err) {
-      setStatus("❌ Error: " + err);
+      console.error("Punch Error:", err);
+      setStatus("❌ Punch Failed. Check API logs.");
     }
   }
 
@@ -74,7 +78,8 @@ export default function PunchKiosk() {
   const handleClockOut = async () => {
     if (!activeLogId) return;
     try {
-      await fetch(`${API_BASE_URL}/time-log/out/${activeLogId}`, { method: "PATCH" });
+      const res = await fetch(`${API_BASE_URL}/time-log/out/${activeLogId}`, { method: "PATCH" });
+      if (!res.ok) throw new Error();
       setStatus("👋 Shift Complete. Have a good night!");
       setActiveLogId(null);
     } catch (err) {
@@ -88,6 +93,7 @@ export default function PunchKiosk() {
         <h1 className="text-2xl font-bold mb-2 text-center text-blue-400">TradeStack Kiosk</h1>
         <p className="text-gray-400 text-center mb-6 text-sm">Satellite Verified Timeclock</p>
 
+        {/* SELECT WORKER */}
         <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Worker</label>
         <select 
           className="w-full mb-4 p-3 bg-gray-700 rounded text-white outline-none focus:ring-2 focus:ring-blue-500"
@@ -98,6 +104,7 @@ export default function PunchKiosk() {
           {users.map(u => <option key={u.id} value={u.id}>{u.full_name} ({u.default_trade})</option>)}
         </select>
 
+        {/* SELECT PROJECT */}
         <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Job Site</label>
         <select 
           className="w-full mb-6 p-3 bg-gray-700 rounded text-white outline-none focus:ring-2 focus:ring-blue-500"
@@ -108,21 +115,23 @@ export default function PunchKiosk() {
           {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
 
-        <div className="mb-6 p-4 bg-black/30 rounded text-center font-mono text-sm border border-gray-600">
+        {/* STATUS SCREEN */}
+        <div className="mb-6 p-4 bg-black/30 rounded text-center font-mono text-sm border border-gray-600 min-h-[52px] flex items-center justify-center">
           {status}
         </div>
 
+        {/* ACTION BUTTONS */}
         {!activeLogId ? (
           <div className="space-y-3">
             <button 
               onClick={handleClockIn}
-              className="w-full py-4 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg shadow-lg text-xl"
+              className="w-full py-4 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg shadow-lg text-xl transition transform active:scale-95"
             >
               PUNCH IN
             </button>
             <button 
               onClick={handleSimulate}
-              className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium rounded border border-gray-500 text-sm"
+              className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium rounded border border-gray-500 text-sm transition"
             >
               🛠️ DEV MODE: SIMULATE GPS
             </button>
@@ -130,7 +139,7 @@ export default function PunchKiosk() {
         ) : (
           <button 
             onClick={handleClockOut}
-            className="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg shadow-lg text-xl"
+            className="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg shadow-lg text-xl transition transform active:scale-95"
           >
             PUNCH OUT
           </button>
