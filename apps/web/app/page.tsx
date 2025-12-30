@@ -20,7 +20,7 @@ export default function AdminDashboard() {
 
   // 1. FETCH DATA ON LOAD
   useEffect(() => {
-    fetch("http://localhost:3000/restitution")
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/restitution/violations`)
       .then((res) => res.json())
       .then((data) => {
         setData(data);

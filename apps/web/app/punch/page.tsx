@@ -10,15 +10,19 @@ export default function PunchKiosk() {
   const [status, setStatus] = useState("Ready to Work");
   const [activeLogId, setActiveLogId] = useState<string | null>(null);
 
+  // Use Environment Variable or fallback to localhost
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
   // 1. LOAD DROPDOWN DATA
   useEffect(() => {
-    fetch("http://localhost:3000/time-log/context")
+    fetch(`${API_BASE_URL}/time-log/context`)
       .then((res) => res.json())
       .then((data) => {
-        setUsers(data.users);
-        setProjects(data.projects);
-      });
-  }, []);
+        setUsers(data.users || []);
+        setProjects(data.projects || []);
+      })
+      .catch(err => setStatus("❌ Connection Error: Backend Offline"));
+  }, [API_BASE_URL]);
 
   // 2. ACTUAL CLOCK IN (Real GPS)
   const handleClockIn = () => {
@@ -42,7 +46,7 @@ export default function PunchKiosk() {
   // 4. SHARED PUNCH LOGIC
   async function sendPunch(lat: number, long: number) {
     try {
-      const res = await fetch("http://localhost:3000/time-log/in", {
+      const res = await fetch(`${API_BASE_URL}/time-log/in`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -66,7 +70,7 @@ export default function PunchKiosk() {
   // 5. CLOCK OUT
   const handleClockOut = async () => {
     if (!activeLogId) return;
-    await fetch(`http://localhost:3000/time-log/out/${activeLogId}`, { method: "PATCH" });
+    await fetch(`${API_BASE_URL}/time-log/out/${activeLogId}`, { method: "PATCH" });
     setStatus("👋 Shift Complete. Have a good night!");
     setActiveLogId(null);
   };
@@ -81,6 +85,7 @@ export default function PunchKiosk() {
         <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Worker</label>
         <select 
           className="w-full mb-4 p-3 bg-gray-700 rounded text-white focus:ring-2 focus:ring-blue-500 outline-none"
+          value={selectedUser}
           onChange={(e) => setSelectedUser(e.target.value)}
         >
           <option value="">-- Select Identity --</option>
@@ -91,6 +96,7 @@ export default function PunchKiosk() {
         <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Job Site</label>
         <select 
           className="w-full mb-6 p-3 bg-gray-700 rounded text-white focus:ring-2 focus:ring-blue-500 outline-none"
+          value={selectedProject}
           onChange={(e) => setSelectedProject(e.target.value)}
         >
           <option value="">-- Select Location --</option>
