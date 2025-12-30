@@ -1,90 +1,99 @@
 "use client";
 import { useEffect, useState } from "react";
 
-// Define what the data looks like
-interface Restitution {
-  id: string;
-  owed_cash: string;
-  owed_fringe: string;
-  status: string;
-  time_log: {
-    user: { full_name: string };
-    project: { name: string };
-    trade_rate: { classification: string };
-  };
-}
-
 export default function AdminDashboard() {
-  const [data, setData] = useState<Restitution[]>([]);
+  const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // 1. FETCH DATA ON LOAD
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/restitution/violations`)
-      .then((res) => res.json())
+    // Corrected the spelling from 'tution' to 'restitution'
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+    
+    fetch(`${API_URL}/restitution/violations`)
+      .then((res) => {
+        if (!res.ok) throw new Error("API responded with an error");
+        return res.json();
+      })
       .then((data) => {
-        setData(data);
+        // Safety check: Ensure we only set an array to avoid .map() crashes
+        setData(Array.isArray(data) ? data : []);
         setLoading(false);
       })
-      .catch((err) => console.error("Failed to fetch API:", err));
+      .catch((err) => {
+        console.error("Failed to fetch API:", err);
+        setLoading(false);
+      });
   }, []);
 
   // 2. HANDLE PAY BUTTON
-  const handlePay = async (id: string) => {
-    await fetch(`http://localhost:3000/restitution/${id}`, { method: "PATCH" });
-    // Refresh the list locally
-    setData(data.filter((item) => item.id !== id));
-    alert("Payment Processed! Checks are being printed.");
+  const handlePay = async (violationId: string) => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+    await fetch(`${API_URL}/restitution/pay/${violationId}`, { method: 'POST' });
+    // Refresh data
+    const res = await fetch(`${API_URL}/restitution/violations`);
+    const updated = await res.json();
+    setData(updated);
   };
 
-  if (loading) return <div className="p-10">Loading Compliance Data...</div>;
+  if (loading) return <div className="p-10 text-white bg-gray-900 min-h-screen">Loading Compliance Data...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-10 font-sans text-gray-900">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold text-blue-900">TradeStack Command Center</h1>
-        <p className="text-gray-600">Compliance & Restitution Monitoring</p>
-      </header>
+    <main className="p-8 bg-gray-900 min-h-screen text-white">
+      <div className="max-w-6xl mx-auto">
+        <header className="flex justify-between items-center mb-8 border-b border-gray-700 pb-4">
+          <div>
+            <h1 className="text-3xl font-bold text-blue-400">TradeStack Audit</h1>
+            <p className="text-gray-400">Davis-Bacon Act & Geospatial Verification</p>
+          </div>
+          <div className="bg-red-900/30 border border-red-500 text-red-400 px-4 py-2 rounded-lg">
+            {data.length} Violations Detected
+          </div>
+        </header>
 
-      <div className="bg-white shadow-md rounded-lg overflow-hidden border border-gray-200">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-gray-100 text-gray-600 uppercase text-sm font-semibold">
-            <tr>
-              <th className="p-4 border-b">Worker</th>
-              <th className="p-4 border-b">Project</th>
-              <th className="p-4 border-b">Violation</th>
-              <th className="p-4 border-b">Owed (Cash)</th>
-              <th className="p-4 border-b">Owed (Fringe)</th>
-              <th className="p-4 border-b">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {data.length === 0 ? (
-              <tr><td colSpan={6} className="p-4 text-center text-green-600 font-bold">All Clear! No violations found.</td></tr>
-            ) : (
-              data.map((item) => (
-                <tr key={item.id} className="hover:bg-red-50 transition">
-                  <td className="p-4 font-medium">{item.time_log.user.full_name}</td>
-                  <td className="p-4 text-gray-600">{item.time_log.project.name}</td>
-                  <td className="p-4 text-red-600 font-semibold">
-                    {item.time_log.trade_rate.classification} (Underpaid)
-                  </td>
-                  <td className="p-4 font-mono font-bold">${item.owed_cash}</td>
-                  <td className="p-4 font-mono text-gray-500">${item.owed_fringe}</td>
-                  <td className="p-4">
-                    <button
-                      onClick={() => handlePay(item.id)}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow-sm text-sm font-bold"
-                    >
-                      PROCESS PAY
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+        <div className="grid gap-6">
+          {data.length === 0 ? (
+            <div className="text-center py-20 bg-gray-800 rounded-xl border border-dashed border-gray-600">
+              <p className="text-gray-500">✅ All sites compliant. No violations found.</p>
+            </div>
+          ) : (
+            data.map((v) => (
+              <div key={v.id} className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-xl flex justify-between items-center">
+                <div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="bg-blue-600 text-xs font-bold px-2 py-1 rounded">FLAGGED PUNCH</span>
+                    <span className="text-gray-400 text-sm">{new Date(v.time_log.clock_in).toLocaleString()}</span>
+                  </div>
+                  <h3 className="text-xl font-bold">{v.time_log.user.full_name}</h3>
+                  <p className="text-gray-400 text-sm mb-4">{v.time_log.project.name} • {v.time_log.user.default_trade}</p>
+                  
+                  <div className="grid grid-cols-2 gap-4 text-sm bg-black/20 p-3 rounded">
+                    <div>
+                      <p className="text-gray-500 uppercase text-[10px] font-bold">Paid Rate</p>
+                      <p className="text-red-400 font-mono text-lg">${v.paid_rate}/hr</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 uppercase text-[10px] font-bold">Required Rate</p>
+                      <p className="text-green-400 font-mono text-lg">${v.required_rate}/hr</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <p className="text-gray-500 text-xs mb-1 uppercase font-bold">Restitution Owed</p>
+                  <p className="text-3xl font-black text-white mb-4">${v.amount_owed.toFixed(2)}</p>
+                  <button 
+                    onClick={() => handlePay(v.id)}
+                    className="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold transition shadow-lg active:scale-95"
+                  >
+                    PROCESS PAY
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
-    </div>
+    </main>
   );
 }
