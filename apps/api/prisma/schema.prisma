@@ -1,0 +1,240 @@
+// DATABASE CONFIG
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -----------------------------------------------------------------------------
+// 1. MULTI-TENANCY & USERS
+// -----------------------------------------------------------------------------
+
+model Tenant {
+  id            String       @id @default(uuid())
+  name          String // e.g., "Acme Construction Inc."
+  subdomain     String       @unique // e.g., "acme"
+  subscription  PlanType     @default(ESSENTIAL)
+
+  // Settings
+  ot_rule       OvertimeRule @default(DAILY_8) // CA vs TX rules
+  pay_frequency PayFrequency @default(WEEKLY)
+
+  // Relations
+  users       User[]
+  projects    Project[]
+  wage_sheets WageDetermination[]
+  created_at  DateTime            @default(now())
+}
+
+enum PlanType {
+  ESSENTIAL
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum OvertimeRule {
+  DAILY_8 // CA: >8h/day is OT
+  WEEKLY_40 // TX: >40h/week is OT
+}
+
+enum PayFrequency {
+  WEEKLY
+  BI_WEEKLY
+}
+
+model User {
+  id            String   @id @default(uuid())
+  tenant_id     String
+  tenant        Tenant   @relation(fields: [tenant_id], references: [id])
+
+  email         String   @unique
+  password_hash String
+  full_name     String
+  role          UserRole
+
+  // WORKER SPECIFIC FIELDS (Nullable if Admin)
+  trade_level   String? // e.g., "Journeyman", "Apprentice L1"
+  default_trade String? // e.g., "Electrician"
+  face_id_hash  String? // Stored hash for "Buddy Punch" verification
+
+  // Relations
+  time_logs     TimeLog[]
+  assigned_jobs ProjectAssignment[]
+
+  // Retention Module
+  lifetime_hours Int      @default(0) // The "Trade Resume" counter
+
+  created_at DateTime @default(now())
+}
+
+enum UserRole {
+  OWNER
+  CONTROLLER // Payroll Admin
+  FOREMAN // Can approve time
+  WORKER // Field user
+}
+
+// -----------------------------------------------------------------------------
+// 2. THE COMPLIANCE CORE (Wage Determinations)
+// -----------------------------------------------------------------------------
+
+// This represents the "Government PDF" (e.g., "CA-DIR-SD-2024-1")
+model WageDetermination {
+  id              String    @id @default(uuid())
+  tenant_id       String
+  tenant          Tenant    @relation(fields: [tenant_id], references: [id])
+
+  code            String // e.g., "CA-SD-ELEC-2024"
+  jurisdiction    String // e.g., "San Diego County"
+  effective_date  DateTime
+  expiration_date DateTime?
+
+  // Relations
+  rates    TradeRate[]
+  projects Project[] // Projects lock to this sheet
+}
+
+// The specific row in the PDF: "Electrician: $50 Base + $15 Fringe"
+model TradeRate {
+  id               String            @id @default(uuid())
+  determination_id String
+  determination    WageDetermination @relation(fields: [determination_id], references: [id])
+
+  classification   String // e.g., "Electrician - Inside Wireman"
+
+  // THE "CENTS-PER-HOUR" MATH
+  rate_base     Decimal @db.Decimal(10, 2) // Cash on check
+  rate_health   Decimal @db.Decimal(10, 2) // H&W
+  rate_pension  Decimal @db.Decimal(10, 2)
+  rate_vacation Decimal @db.Decimal(10, 2)
+  rate_training Decimal @db.Decimal(10, 2) // Apprenticeship fund
+  rate_other    Decimal @db.Decimal(10, 2)
+
+  total_package Decimal @db.Decimal(10, 2) // Verification sum
+
+  // Relations
+  time_logs TimeLog[] // Logs link here to lock the $$ value
+}
+
+// -----------------------------------------------------------------------------
+// 3. PROJECTS & FIELD INTELLIGENCE
+// -----------------------------------------------------------------------------
+
+model Project {
+  id            String @id @default(uuid())
+  tenant_id     String
+  tenant        Tenant @relation(fields: [tenant_id], references: [id])
+
+  name          String
+  job_number    String // "24-001"
+
+  // COMPLIANCE LOCK
+  // We attach the project to a specific wage sheet. 
+  wage_sheet_id String
+  wage_sheet    WageDetermination @relation(fields: [wage_sheet_id], references: [id])
+
+  // GEO-FENCING (Field Intel)
+  geo_lat       Float
+  geo_long      Float
+  geo_radius    Int    @default(500) // Meters allowed for clock-in
+
+  // Relations
+  assignments     ProjectAssignment[]
+  time_logs       TimeLog[]
+  production_logs ProductionLog[]
+}
+
+model ProjectAssignment {
+  user_id    String
+  project_id String
+  user       User    @relation(fields: [user_id], references: [id])
+  project    Project @relation(fields: [project_id], references: [id])
+
+  @@id([user_id, project_id])
+}
+
+// -----------------------------------------------------------------------------
+// 4. TIME & PRODUCTION (The "Scale-Up" Logic)
+// -----------------------------------------------------------------------------
+
+model TimeLog {
+  id            String @id @default(uuid())
+  user_id       String
+  user          User   @relation(fields: [user_id], references: [id])
+
+  project_id    String
+  project       Project @relation(fields: [project_id], references: [id])
+
+  // DYNAMIC CLASSIFICATION
+  trade_rate_id String
+  trade_rate    TradeRate @relation(fields: [trade_rate_id], references: [id])
+
+  // TIMESTAMPS
+  clock_in      DateTime
+  clock_out     DateTime?
+  duration_hrs  Decimal?  @db.Decimal(10, 2)
+
+  // FIELD INTELLIGENCE VALIDATION
+  gps_lat_in      Float?
+  gps_long_in     Float?
+  face_scan_score Float?  // 0.0 to 1.0 confidence score
+  is_flagged      Boolean @default(false) // If GPS outside fence
+
+  // PAYROLL STATUS
+  status        LogStatus @default(PENDING)
+  payroll_batch String? // Links to exported batch ID
+  
+  // RELATIONS
+  restitution   RestitutionRecord?
+
+  created_at DateTime @default(now())
+}
+
+enum LogStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+// "Installed 50ft of Pipe"
+model ProductionLog {
+  id          String   @id @default(uuid())
+  project_id  String
+  project     Project  @relation(fields: [project_id], references: [id])
+
+  item_code   String // e.g., "COST-CODE-050"
+  description String // e.g., "Install 2in PVC"
+  quantity    Decimal
+  unit        String // "LF", "EA", "SQFT"
+
+  date_logged DateTime @default(now())
+}
+
+// -----------------------------------------------------------------------------
+// 5. THE RESTITUTION ENGINE (The "Moat")
+// -----------------------------------------------------------------------------
+
+model RestitutionRecord {
+  id              String  @id @default(uuid())
+  original_log_id String  @unique
+  time_log        TimeLog @relation(fields: [original_log_id], references: [id])
+
+  reason          String // e.g., "Reclassified from Laborer to Carpenter"
+
+  // The Delta to pay
+  owed_cash   Decimal @db.Decimal(10, 2)
+  owed_fringe Decimal @db.Decimal(10, 2)
+
+  status    RestitutionStatus @default(PENDING)
+  paid_date DateTime?
+}
+
+enum RestitutionStatus {
+  PENDING
+  PROCESSED
+}
