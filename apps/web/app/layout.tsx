@@ -1,12 +1,12 @@
-import "./globals.css";
+import "./globals.css"; // <--- CRITICAL: This must be the first import
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "TradeStack Admin",
-  description: "Compliance Dashboard",
+  title: "TradeStack",
+  description: "Davis-Bacon Compliance Platform",
 };
 
 export default function RootLayout({
