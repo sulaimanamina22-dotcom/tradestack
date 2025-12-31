@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link"; // Import Next.js Client Router
 
 export default function PunchKiosk() {
   const [users, setUsers] = useState<any[]>([]);
@@ -20,7 +21,7 @@ export default function PunchKiosk() {
         return res.json();
       })
       .then((data) => {
-        // Safety checks to ensure we are setting arrays to avoid .map() crashes
+        // Safety checks for array data
         setUsers(Array.isArray(data?.users) ? data.users : []);
         setProjects(Array.isArray(data?.projects) ? data.projects : []);
       })
@@ -41,7 +42,7 @@ export default function PunchKiosk() {
     );
   };
 
-  // 3. DEV BYPASS (Simulated GPS for Testing)
+  // 3. DEV BYPASS (Simulated GPS)
   const handleSimulate = () => {
     if (!selectedUser || !selectedProject) return alert("Select User & Project!");
     setStatus("📡 Simulating Satellite Link...");
@@ -89,7 +90,8 @@ export default function PunchKiosk() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-md bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700">
+      <div className="w-full max-w-md bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700 relative">
+        {/* Header */}
         <h1 className="text-2xl font-bold mb-2 text-center text-blue-400">TradeStack Kiosk</h1>
         <p className="text-gray-400 text-center mb-6 text-sm">Satellite Verified Timeclock</p>
 
@@ -144,6 +146,13 @@ export default function PunchKiosk() {
             PUNCH OUT
           </button>
         )}
+
+        {/* ADMIN LINK */}
+        <div className="mt-8 pt-6 border-t border-gray-700 text-center">
+          <Link href="/" className="text-gray-500 text-sm hover:text-white transition underline">
+            Admin Access: View Audit Dashboard &rarr;
+          </Link>
+        </div>
       </div>
     </div>
   );
