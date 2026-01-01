@@ -1,4 +1,5 @@
 "use client";
+import { UserButton } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 
 export default function AdminDashboard() {
@@ -42,14 +43,19 @@ export default function AdminDashboard() {
     <main className="p-8 bg-gray-900 min-h-screen text-white">
       <div className="max-w-6xl mx-auto">
         <header className="flex justify-between items-center mb-8 border-b border-gray-700 pb-4">
-          <div>
-            <h1 className="text-3xl font-bold text-blue-400">TradeStack Audit</h1>
-            <p className="text-gray-400">Davis-Bacon Act & Geospatial Verification</p>
-          </div>
-          <div className="bg-red-900/30 border border-red-500 text-red-400 px-4 py-2 rounded-lg">
-            {data.length} Violations Detected
-          </div>
-        </header>
+  <div>
+    <h1 className="text-3xl font-bold text-blue-400">TradeStack Audit</h1>
+    <p className="text-gray-400">Davis-Bacon Act & Geospatial Verification</p>
+  </div>
+  
+  <div className="flex items-center gap-4">
+    <div className="bg-red-900/30 border border-red-500 text-red-400 px-4 py-2 rounded-lg">
+      {data.length} Violations
+    </div>
+    {/* This button handles Profile management and Logout automatically */}
+    <UserButton afterSignOutUrl="/sign-in" />
+  </div>
+</header>
 
         <div className="grid gap-6">
           {data.length === 0 ? (
