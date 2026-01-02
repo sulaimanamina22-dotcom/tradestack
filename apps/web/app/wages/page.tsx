@@ -1,23 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Papa from "papaparse";
 import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 
-// Initialize Supabase Client for the Frontend
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
 export default function WageManager() {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState("");
+  // We hold the client in state so it only initializes once in the browser
+  const [supabase, setSupabase] = useState<any>(null);
+
+  useEffect(() => {
+    // This code only runs in the browser, bypassing the build error
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (supabaseUrl && supabaseKey) {
+      const client = createClient(supabaseUrl, supabaseKey);
+      setSupabase(client);
+    } else {
+      console.error("Supabase keys missing!");
+      setStatus("❌ Error: Missing API Keys");
+    }
+  }, []);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!supabase) {
+        setStatus("❌ Error: Database not connected yet.");
+        return;
+    }
 
     setUploading(true);
     setStatus("Reading file...");
@@ -53,13 +68,20 @@ export default function WageManager() {
     if (batchError) throw batchError;
 
     // 3. Format the data for Supabase
-    const rates = data.map((row) => ({
-      batch_id: batchData.id,
-      code: row.Code,
-      classification: row.Classification,
-      base_rate: parseFloat(row.BaseRate),
-      fringe_rate: parseFloat(row.FringeRate),
-    }));
+    // We add a check to ensure 'row' exists to satisfy TypeScript
+    const rates = data
+      .filter((row: any) => row.Code && row.BaseRate) 
+      .map((row: any) => ({
+        batch_id: batchData.id,
+        code: row.Code,
+        classification: row.Classification,
+        base_rate: parseFloat(row.BaseRate),
+        fringe_rate: parseFloat(row.FringeRate),
+      }));
+
+    if (rates.length === 0) {
+        throw new Error("No valid rows found. Check CSV column headers.");
+    }
 
     // 4. Insert all rates at once
     const { error: ratesError } = await supabase
